@@ -1,0 +1,70 @@
+# Single-host Compose stack (ADR-013).
+#
+#   docker compose -f docker/docker-compose.yml up --build
+#   docker compose -f docker/docker-compose.yml run --rm api python -m app.demo seed
+#
+# Then open http://localhost:8080.
+#
+# Ollama is optional and lives behind a profile. Without it the stack runs
+# exactly as it does now — narration and chat answers come from hand-written
+# templates, and every response says which you got. Start it with:
+#
+#   docker compose -f docker/docker-compose.yml --profile llm up --build
+
+name: ai-financial-intelligence
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      # SQLite on a named volume, so a rebuild does not discard the demo data.
+      AFI_DATABASE_URL: sqlite:////data/financial_intelligence.db
+      # Authentication (V1.2, ADR-011). This demo stack runs in development
+      # mode, so an unset AFI_AUTH_SECRET falls back to an insecure dev key with
+      # a loud warning. For a REAL deployment, set AFI_ENVIRONMENT=production and
+      # a strong AFI_AUTH_SECRET (generate one with
+      # `python -c "import secrets; print(secrets.token_urlsafe(48))"`); with
+      # production set and no secret, the API fails closed and refuses to start.
+      AFI_ENVIRONMENT: ${AFI_ENVIRONMENT:-development}
+      AFI_AUTH_SECRET: ${AFI_AUTH_SECRET:-}
+      AFI_LLM_PROVIDER: ${AFI_LLM_PROVIDER:-none}
+      AFI_LLM_MODEL: ${AFI_LLM_MODEL:-qwen2.5:7b-instruct}
+      # Reaches the sibling container when the llm profile is up.
+      AFI_LLM_BASE_URL: ${AFI_LLM_BASE_URL:-http://ollama:11434}
+      AFI_LLM_TIMEOUT_SECONDS: ${AFI_LLM_TIMEOUT_SECONDS:-120}
+      AFI_LLM_MAX_GENERATED: ${AFI_LLM_MAX_GENERATED:-5}
+      AFI_DEMO_MODE: ${AFI_DEMO_MODE:-true}
+    volumes:
+      - api-data:/data
+    # Not published to the host. The only way in is through the web container's
+    # proxy, which keeps the browser on one origin and keeps an unauthenticated
+    # API off the host's network surface (ADR-014).
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "${AFI_WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    volumes:
+      - ollama-models:/root/.ollama
+    expose:
+      - "11434"
+    restart: unless-stopped
+
+volumes:
+  api-data:
+  ollama-models:

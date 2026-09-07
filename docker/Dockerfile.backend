@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+#
+# The API. Single stage, because there is nothing to compile — the backend's
+# runtime dependencies all ship as wheels (argon2-cffi included) and there is
+# no build step (ADR-014).
+
+FROM python:3.13-slim
+
+# Fail fast and log immediately rather than buffering into a void when the
+# container is inspected mid-request.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /srv
+
+# Dependencies first, so a source change does not reinstall them.
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app ./app
+
+# The SQLite file lives on a volume, not in the image layer — a container
+# rebuild must not silently discard the demo data.
+ENV AFI_DATABASE_URL=sqlite:////data/financial_intelligence.db
+RUN mkdir -p /data
+
+# Runs unprivileged. There is nothing here that needs root, and a container
+# that does not need it should not have it.
+RUN useradd --system --uid 10001 afi && chown -R afi:afi /data /srv
+USER afi
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=20s --timeout=3s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
