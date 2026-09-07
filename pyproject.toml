@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# `backend` so tests import `app.*` without an editable install; `.` so they
+# can import shared builders as `tests.analysis.conftest`.
+pythonpath = ["backend", "."]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning:app.*"]

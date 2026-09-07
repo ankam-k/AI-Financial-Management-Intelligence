@@ -1,0 +1,19 @@
+# Runtime dependencies
+#
+# Deliberately small. PostgreSQL, Alembic, and Ollama clients still arrive in
+# the sprints that need them (see ADR-014). Authentication (V1.2) adds exactly
+# two: Argon2id password hashing and JWT — both mandated by ADR-011, neither
+# hand-rolled.
+
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+sqlalchemy>=2.0.36,<2.1
+pydantic>=2.9,<3.0
+pydantic-settings>=2.6,<3.0
+
+# ── Authentication (V1.2, ADR-011) ───────────────────────────────────────────
+# Argon2id password hashing. Ships manylinux wheels, so no compiler is needed
+# in the slim Docker image.
+argon2-cffi>=23.1,<24.0
+# JWT access tokens (HS256). Pure-Python, small, widely audited.
+PyJWT>=2.9,<3.0
